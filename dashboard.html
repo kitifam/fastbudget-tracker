@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FastBudget Tracker v1</title>
+
+  <!-- TailwindCSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- sql.js (SQLite in browser) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="css/styles.css">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <script src="./pwa-register.js?v=20260430-2" defer></script>
+</head>
+
+<body class="bg-slate-50 min-h-screen">
+
+  <!-- ===== DB FILE PICKER OVERLAY ===== -->
+  <div id="db-picker-overlay"
+    class="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4">
+    <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl p-8 text-center">
+      <div class="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-lg shadow-blue-200">
+        <i data-lucide="database" class="w-8 h-8 text-white"></i>
+      </div>
+      <h1 class="text-2xl font-bold text-slate-800 mb-2">FastBudget Tracker</h1>
+      <p class="text-slate-500 text-sm mb-6">เลือกไฟล์ FastBudget Database (.bak) เพื่อเริ่มต้น</p>
+
+      <label for="db-file-input"
+        class="inline-flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-xl font-medium cursor-pointer transition-colors shadow-sm active:scale-[0.98]">
+        <i data-lucide="folder-open" class="w-5 h-5"></i>
+        เลือกไฟล์ .bak
+      </label>
+      <input id="db-file-input" type="file" accept=".bak,.db,.sqlite,.sqlite3" class="hidden">
+
+      <div id="db-loading" class="hidden mt-5">
+        <div class="flex items-center justify-center gap-2 text-blue-600">
+          <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
+          <span class="text-sm font-medium" id="db-loading-text">กำลังโหลดฐานข้อมูล...</span>
+        </div>
+      </div>
+      <div id="db-error" class="hidden mt-4 text-sm text-red-500 bg-red-50 rounded-lg px-4 py-3"></div>
+
+      <p class="text-xs text-slate-400 mt-6">ไฟล์จะถูกอ่านเฉพาะในเซสชันนี้เท่านั้น ไม่มีการอัปโหลดข้อมูล</p>
+    </div>
+  </div>
+
+  <div id="pull-refresh-indicator"
+    class="fixed top-2 left-1/2 -translate-x-1/2 z-50 hidden bg-white border border-slate-200 rounded-full px-3 py-1.5 shadow-sm flex items-center gap-2">
+    <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-blue-500"></i>
+    <span class="text-xs text-slate-500">Refreshing...</span>
+  </div>
+
+  <!-- ========== MOBILE HEADER ========== -->
+  <header
+    class="lg:hidden fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-30 px-4 py-3 flex items-center justify-between">
+    <button onclick="toggleSidebar()" class="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+      <i data-lucide="menu" class="w-5 h-5 text-slate-600"></i>
+    </button>
+    <h1 class="font-semibold text-slate-800">FastBudget Tracker</h1>
+    <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+      <i data-lucide="database" class="w-4 h-4 text-blue-500"></i>
+    </div>
+  </header>
+
+  <!-- ========== SIDEBAR OVERLAY (mobile only) ========== -->
+  <div id="sidebar-overlay" class="hidden fixed inset-0 bg-black/30 z-30 lg:hidden" onclick="toggleSidebar()"></div>
+
+  <!-- ========== SIDEBAR ========== -->
+  <aside id="sidebar"
+    class="sidebar fixed top-0 left-0 h-full w-60 bg-white border-r border-slate-200 z-40 flex flex-col">
+
+    <!-- Logo -->
+    <div class="p-5 border-b border-slate-100">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 bg-blue-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
+          <i data-lucide="wallet" class="w-5 h-5 text-white"></i>
+        </div>
+        <span class="font-bold text-slate-800">FastBudget Tracker</span>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+      <button onclick="navigate('dashboard')"
+        class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-blue-50 hover:text-blue-600 transition-all"
+        data-page="dashboard">
+        <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+        <span>Overview</span>
+      </button>
+
+      <button onclick="navigate('transactions')" data-page="transactions"
+        class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+        <i data-lucide="arrow-left-right" class="w-5 h-5"></i> Transactions
+      </button>
+      <button onclick="navigate('accounts')" data-page="accounts"
+        class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+        <i data-lucide="landmark" class="w-5 h-5"></i> Accounts
+      </button>
+      <button onclick="navigate('investments')" data-page="investments"
+        class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+        <i data-lucide="trending-up" class="w-5 h-5"></i> Investments
+      </button>
+      <button onclick="navigate('creditcards')" data-page="creditcards"
+        class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+        <i data-lucide="credit-card" class="w-5 h-5"></i> Credit Cards
+      </button>
+      <button onclick="navigate('reports')"
+        class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+        data-page="reports">
+        <i data-lucide="bar-chart-2" class="w-5 h-5"></i> Reports
+      </button>
+      <button onclick="navigate('forecast')"
+        class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+        data-page="forecast">
+        <i data-lucide="telescope" class="w-5 h-5"></i> Forecast
+      </button>
+    </nav>
+
+    <!-- DB file info (bottom) -->
+    <div class="p-3 border-t border-slate-100">
+      <div class="flex items-center gap-3 px-3 py-2">
+        <div class="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+          <i data-lucide="database" class="w-4 h-4 text-blue-500"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p id="db-file-name" class="text-xs font-medium text-slate-700 truncate">FastBudget DB</p>
+          <p class="text-[10px] text-slate-400">Read-only mode</p>
+        </div>
+        <button onclick="showDbPicker()" class="p-1.5 hover:bg-slate-100 rounded-lg transition-colors group" title="เปลี่ยนไฟล์ DB">
+          <i data-lucide="folder-open" class="w-4 h-4 text-slate-400 group-hover:text-blue-500"></i>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ========== MAIN CONTENT ========== -->
+  <main class="lg:ml-60 pt-14 lg:pt-0 min-h-screen transition-all duration-300">
+    <div id="page-content" class="p-2 sm:p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+      <div class="page-transition">
+        <div class="flex flex-col items-center justify-center min-h-[60vh] text-slate-400">
+          <i data-lucide="loader-2" class="w-8 h-8 animate-spin mb-4"></i>
+          <p>กำลังโหลด...</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Shared Modal Containers -->
+  <div id="tx-modal" class="hidden fixed inset-0 z-[60]"></div>
+  <div id="account-modal" class="hidden fixed inset-0 z-50"></div>
+  <div id="investment-modal" class="hidden fixed inset-0 z-50"></div>
+  <div id="cc-modal" class="hidden fixed inset-0 z-50"></div>
+
+  <!-- ========== SCRIPTS ========== -->
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prop-types@15/prop-types.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/recharts@2.1.12/umd/Recharts.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7/babel.min.js"></script>
+
+  <script src="js/config.js?v=6"></script>
+  <script src="js/toast.js?v=2"></script>
+  <script src="js/auth.js?v=2"></script>
+  <script src="js/db.js?v=9"></script>
+  <script src="js/components/transactions.js?v=3"></script>
+  <script src="js/components/accounts.js?v=6"></script>
+  <script src="js/components/investments.js?v=4"></script>
+  <script type="text/babel" src="js/components/overview.jsx?v=7"></script>
+  <script src="js/components/creditcards.js?v=6"></script>
+  <script src="js/components/reports.js?v=6"></script>
+  <script src="js/components/forecast.js?v=1"></script>
+
+  <script>
+    // ===================================================
+    // Read-only stub — Transfer modal was removed; accounts.js/investments.js still reference this global
+    window.openTransferModal = function() {
+      if (typeof Toast !== 'undefined') Toast.show('Read-only mode — ไม่สามารถโอนเงินได้', 'warning');
+    };
+
+    // DB File Picker
+    // ===================================================
+
+    function showDbPicker() {
+      document.getElementById('db-picker-overlay').classList.remove('hidden');
+      document.getElementById('db-error').classList.add('hidden');
+      document.getElementById('db-loading').classList.add('hidden');
+    }
+
+    function hideDbPicker() {
+      document.getElementById('db-picker-overlay').classList.add('hidden');
+    }
+
+    document.getElementById('db-file-input').addEventListener('change', async function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const loadingEl = document.getElementById('db-loading');
+      const errorEl = document.getElementById('db-error');
+      const loadingText = document.getElementById('db-loading-text');
+
+      loadingEl.classList.remove('hidden');
+      errorEl.classList.add('hidden');
+      loadingText.textContent = 'กำลังโหลด sql.js...';
+      if (window.lucide) lucide.createIcons();
+
+      try {
+        loadingText.textContent = `กำลังอ่านไฟล์ ${file.name}...`;
+        await initSqliteFromFile(file);
+
+        document.getElementById('db-file-name').textContent = file.name;
+        hideDbPicker();
+        await initApp();
+      } catch (err) {
+        console.error('DB load error:', err);
+        loadingEl.classList.add('hidden');
+        errorEl.classList.remove('hidden');
+        errorEl.textContent = 'ไม่สามารถอ่านไฟล์ได้: ' + err.message;
+      }
+
+      // Reset input so same file can be selected again
+      this.value = '';
+    });
+
+    // ===================================================
+    // App Init
+    // ===================================================
+
+    async function initApp() {
+      const initialPage = window.location.hash.substring(1) || 'overview';
+      navigate(initialPage);
+      if (window.lucide) lucide.createIcons();
+    }
+
+    // ===================================================
+    // Navigation — SPA routing
+    // ===================================================
+
+    let currentPage = 'overview';
+    let navigating = false;
+
+    function applyEnterTransition(content) {
+      content.style.opacity = '0';
+      content.style.transform = 'translateY(10px)';
+      content.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+      requestAnimationFrame(() => {
+        content.style.opacity = '1';
+        content.style.transform = 'translateY(0)';
+        setTimeout(() => { content.style.transform = 'none'; }, 250);
+      });
+    }
+
+    async function fadeOutCurrent(content) {
+      content.style.transition = 'opacity 0.15s ease';
+      content.style.opacity = '0';
+      await new Promise(r => setTimeout(r, 150));
+    }
+
+    async function navigate(page, updateHash = true) {
+      if (navigating) return;
+      navigating = true;
+      let delayedSpinner = null;
+
+      if (updateHash) window.location.hash = page;
+
+      const content = document.getElementById('page-content');
+      try {
+        const allowedPages = new Set([
+          'overview', 'dashboard', 'transactions', 'accounts', 'investments', 'creditcards', 'reports', 'forecast'
+        ]);
+
+        if (!allowedPages.has(page)) {
+          content.innerHTML = renderPlaceholder('alert-triangle', 'Not Found', 'ไม่พบหน้าที่ต้องการ');
+          if (window.lucide) lucide.createIcons();
+          return;
+        }
+
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+          const isActive = btn.dataset.page === page || (page === 'overview' && btn.dataset.page === 'dashboard');
+          btn.classList.toggle('bg-blue-50', isActive);
+          btn.classList.toggle('text-blue-600', isActive);
+          btn.classList.toggle('text-slate-600', !isActive);
+        });
+
+        closeSidebar();
+        await fadeOutCurrent(content);
+        content.innerHTML = '';
+        delayedSpinner = setTimeout(() => {
+          if (content.children.length > 0 || content.innerHTML.trim() !== '') return;
+          content.innerHTML = `
+            <div class="flex items-center justify-center min-h-[60vh] text-slate-400">
+              <i data-lucide="loader-2" class="w-8 h-8 animate-spin"></i>
+            </div>`;
+          if (window.lucide) lucide.createIcons();
+        }, 250);
+
+        const userId = 'local';
+        let html;
+
+        switch (page) {
+          case 'accounts':
+            AccountsPage.activeFilter = 'all';
+            html = await AccountsPage.render(userId);
+            break;
+          case 'investments':
+            InvestmentsPage.activeFilter = 'all';
+            html = await InvestmentsPage.render(userId);
+            break;
+          case 'transactions':
+            html = await TransactionsPage.render(userId, currentPage);
+            break;
+          case 'creditcards':
+            html = await CreditCardsPage.render(userId);
+            break;
+          case 'overview':
+          case 'dashboard':
+            currentPage = page;
+            await OverviewPage.init(content, userId);
+            clearTimeout(delayedSpinner);
+            applyEnterTransition(content);
+            return;
+          case 'reports':
+            currentPage = page;
+            await ReportsPage.mount();
+            clearTimeout(delayedSpinner);
+            applyEnterTransition(content);
+            return;
+          case 'forecast':
+            currentPage = page;
+            await ForecastPage.mount();
+            clearTimeout(delayedSpinner);
+            applyEnterTransition(content);
+            return;
+          default:
+            html = renderPlaceholder('layout-dashboard', page.charAt(0).toUpperCase() + page.slice(1), 'ฟีเจอร์นี้กำลังพัฒนา');
+        }
+
+        content.innerHTML = html;
+        if (window.lucide) lucide.createIcons();
+        clearTimeout(delayedSpinner);
+        currentPage = page;
+        applyEnterTransition(content);
+      } finally {
+        navigating = false;
+      }
+    }
+
+    function renderPlaceholder(icon, title, description) {
+      return `
+        <div class="mb-6"><h1 class="text-2xl font-bold text-slate-800">${title}</h1></div>
+        <div class="bg-white rounded-xl shadow-lg p-12 flex flex-col items-center text-center">
+          <div class="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
+            <i data-lucide="${icon}" class="w-8 h-8 text-slate-400"></i>
+          </div>
+          <h2 class="text-lg font-semibold text-slate-700 mb-2">${description}</h2>
+        </div>`;
+    }
+
+    // ===================================================
+    // Sidebar toggle — mobile
+    // ===================================================
+
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('open');
+      document.getElementById('sidebar-overlay').classList.toggle('hidden');
+    }
+
+    function closeSidebar() {
+      document.getElementById('sidebar').classList.remove('open');
+      document.getElementById('sidebar-overlay').classList.add('hidden');
+    }
+
+    // Pull-to-refresh (mobile)
+    (() => {
+      let startY = 0, pulling = false, distance = 0;
+      const maxPull = 90, trigger = 70;
+      const indicator = document.getElementById('pull-refresh-indicator');
+      const content = document.getElementById('page-content');
+
+      const onStart = (e) => {
+        if (window.innerWidth >= 768 || window.scrollY > 0) return;
+        startY = e.touches[0].clientY;
+        pulling = true;
+        distance = 0;
+      };
+      const onMove = (e) => {
+        if (!pulling) return;
+        const delta = e.touches[0].clientY - startY;
+        if (delta <= 0) return;
+        distance = Math.min(delta * 0.45, maxPull);
+        content.style.transform = `translateY(${distance}px)`;
+        content.style.transition = 'transform 0.05s linear';
+        indicator.classList.remove('hidden');
+        indicator.querySelector('span').textContent = distance >= trigger ? 'ปล่อยเพื่อรีเฟรช' : 'ดึงลงเพื่อรีเฟรช';
+        e.preventDefault();
+      };
+      const onEnd = async () => {
+        if (!pulling) return;
+        pulling = false;
+        content.style.transition = 'transform 0.2s ease';
+        content.style.transform = 'translateY(0)';
+        if (distance >= trigger) {
+          indicator.classList.remove('hidden');
+          indicator.querySelector('span').textContent = 'Refreshing...';
+          await navigate(currentPage || 'overview');
+        }
+        setTimeout(() => indicator.classList.add('hidden'), 250);
+      };
+
+      window.addEventListener('touchstart', onStart, { passive: true });
+      window.addEventListener('touchmove', onMove, { passive: false });
+      window.addEventListener('touchend', onEnd, { passive: true });
+    })();
+
+    window.addEventListener('popstate', () => {
+      const page = window.location.hash.substring(1) || 'overview';
+      navigate(page, false);
+    });
+
+    // ===================================================
+    // Startup
+    // ===================================================
+
+    lucide.createIcons();
+
+    // Show file picker immediately — user must load a DB first
+    // (overlay is visible by default in HTML)
+  </script>
+
+</body>
+
+</html>

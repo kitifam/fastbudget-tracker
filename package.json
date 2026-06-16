@@ -1,0 +1,12 @@
+{
+  "name": "expense-tracker-migration",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "migrate:sqlite": "node scripts/migrate-sqlite-to-supabase.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.0",
+    "sql.js": "^1.13.0"
+  }
+}

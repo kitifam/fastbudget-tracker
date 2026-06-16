@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:cdnjs.cloudflare.com)",
+      "Bash(git --version)",
+      "Bash(git config *)",
+      "Bash(git credential-manager *)",
+      "Bash(git-credential-manager --version)",
+      "Bash(git -C \"d:/00_SourceCode/00_AI_App/Expense Tracker v5.2\" init)",
+      "Bash(git -C \"d:/00_SourceCode/00_AI_App/Expense Tracker v5.2\" status)",
+      "Bash(git -C \"d:/00_SourceCode/00_AI_App/Expense Tracker v5.2\" add .)",
+      "Bash(git -C \"d:/00_SourceCode/00_AI_App/Expense Tracker v5.2\" commit -m \"initial commit\")"
+    ]
+  }
+}
