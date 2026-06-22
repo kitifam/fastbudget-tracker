@@ -1,4 +1,9 @@
-const NAVTABLE_FUNDS = new Set(['B-INNOTECHRMF', 'BFIXED', 'KFGTECHRMF', 'TMBGQGRMF']);
+const NAVTABLE_FUNDS = new Set(['B-INNOTECHRMF', 'BFIXED', 'KFGTECHRMF', 'TMBGQGRMF', 'B-USAlpha-RMF']);
+
+// navtable URL slug differs from navKey for some funds
+const NAVTABLE_SLUG_OVERRIDES = {
+  'B-USAlpha-RMF': 'B-USALPHARMF',
+};
 
 const SCBAM_FUNDS = {
   'SCBS&P500A':  '/th/fund/foreign-investment-fund-equity/fund-information/scbs-p500a',
@@ -24,7 +29,8 @@ function parseThaiDate(text) {
 const FETCH_HEADERS = { 'User-Agent': 'Mozilla/5.0 (compatible; ExpenseTracker/1.0)' };
 
 async function fetchNavtable(fund) {
-  const url = `https://navtable.com/funds/${encodeURIComponent(fund)}/`;
+  const slug = NAVTABLE_SLUG_OVERRIDES[fund] ?? fund;
+  const url = `https://navtable.com/funds/${encodeURIComponent(slug)}/`;
   const res = await fetch(url, { headers: FETCH_HEADERS });
   const html = await res.text();
   const navMatch = html.match(/<h3[^>]*flex-grow-1[^>]*>([\d.]+)<\/h3>/);
@@ -49,26 +55,48 @@ async function fetchScbam(fund, path) {
   };
 }
 
-export default async function handler(req, res) {
-  const { funds } = req.query;
-  if (!funds) return res.status(400).json({ error: 'funds param required' });
+async function fetchYahoo(ticker) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
+  const res = await fetch(url, { headers: FETCH_HEADERS });
+  const json = await res.json();
+  const price = json?.chart?.result?.[0]?.meta?.regularMarketPrice;
+  if (price == null) throw new Error(`price not found for ${ticker}`);
+  return { nav: price, date: null };
+}
 
-  const requested = funds.split(',').map(f => f.trim()).filter(Boolean);
+export default async function handler(req, res) {
+  const { funds, tickers } = req.query;
+  if (!funds && !tickers) return res.status(400).json({ error: 'funds or tickers param required' });
+
   const result = {};
 
-  await Promise.all(requested.map(async fund => {
-    try {
-      if (NAVTABLE_FUNDS.has(fund)) {
-        result[fund] = await fetchNavtable(fund);
-      } else if (SCBAM_FUNDS[fund]) {
-        result[fund] = await fetchScbam(fund, SCBAM_FUNDS[fund]);
-      } else {
-        result[fund] = { nav: null, date: null, error: 'unknown fund' };
+  if (funds) {
+    const requested = funds.split(',').map(f => f.trim()).filter(Boolean);
+    await Promise.all(requested.map(async fund => {
+      try {
+        if (NAVTABLE_FUNDS.has(fund)) {
+          result[fund] = await fetchNavtable(fund);
+        } else if (SCBAM_FUNDS[fund]) {
+          result[fund] = await fetchScbam(fund, SCBAM_FUNDS[fund]);
+        } else {
+          result[fund] = { nav: null, date: null, error: 'unknown fund' };
+        }
+      } catch (e) {
+        result[fund] = { nav: null, date: null, error: e.message };
       }
-    } catch (e) {
-      result[fund] = { nav: null, date: null, error: e.message };
-    }
-  }));
+    }));
+  }
+
+  if (tickers) {
+    const requestedTickers = tickers.split(',').map(t => t.trim()).filter(Boolean);
+    await Promise.all(requestedTickers.map(async ticker => {
+      try {
+        result[ticker] = await fetchYahoo(ticker);
+      } catch (e) {
+        result[ticker] = { nav: null, date: null, error: e.message };
+      }
+    }));
+  }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=600');

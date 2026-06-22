@@ -10,7 +10,7 @@ const InvestmentsPage = {
   activeFilter: 'all', // 'all', 'mutual_fund', 'stock', 'gold'
   cardsPerRow: window.innerWidth > 768 ? 3 : 2,
   navData: {},
-  navFetchState: { loading: false, results: [] },
+  navFetchState: { loading: false, results: [], failed: [] },
 
   // ===== NAV FETCHING =====
 
@@ -43,16 +43,73 @@ const InvestmentsPage = {
   async _fetchStockNAV(stockAccounts) {
     if (!stockAccounts.length) return {};
     const result = {};
-    await Promise.all(stockAccounts.map(async s => {
-      try {
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${s.ticker}?interval=1d&range=1d`;
-        const res = await fetch(url);
-        const json = await res.json();
-        const price = json?.chart?.result?.[0]?.meta?.regularMarketPrice;
-        if (price != null) result[s.navKey ?? s.ticker] = { nav: price, date: null };
-      } catch {}
-    }));
+    const tickers = stockAccounts.map(s => encodeURIComponent(s.ticker)).join(',');
+    try {
+      const res = await fetch(`/api/nav?tickers=${tickers}`);
+      const json = await res.json();
+      for (const s of stockAccounts) {
+        const entry = json[s.ticker];
+        if (entry?.nav != null) result[s.navKey ?? s.ticker] = { nav: entry.nav, date: null };
+      }
+    } catch {}
     return result;
+  },
+
+  _setNavAreaLoading() {
+    const updateArea = document.getElementById('nav-update-area');
+    if (!updateArea) return;
+    updateArea.innerHTML = `
+      <button disabled class="inline-flex items-center gap-2 bg-slate-100 text-slate-400 px-4 py-2.5 rounded-lg font-medium text-sm cursor-not-allowed">
+        <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+        <span id="nav-status-text">กำลังเริ่ม...</span>
+      </button>`;
+    if (window.lucide) lucide.createIcons();
+  },
+
+  async _doFetchPrices(fundAccounts, stockAccounts, setMsg) {
+    const results = [];
+    const failedEntries = [];
+
+    if (fundAccounts.length) {
+      setMsg(`กำลังดึงกองทุนรวม ${fundAccounts.length} รายการ...`);
+      const navResult = await this._fetchMutualFundNAV(fundAccounts);
+      for (const [k, v] of Object.entries(navResult)) {
+        if (v?.nav != null) this.navData[k] = v;
+      }
+      for (const f of fundAccounts) {
+        const entry = navResult[f.navKey];
+        const ok = !!(entry?.nav);
+        if (!ok) failedEntries.push(f);
+        results.push({
+          label: `${f.navKey}${ok ? ' ' + Number(entry.nav).toFixed(entry.nav > 100 ? 2 : 4) : ''}`,
+          ok,
+        });
+      }
+    }
+
+    if (stockAccounts.length) {
+      setMsg(`กำลังดึงราคาหุ้น ${stockAccounts.length} รายการ...`);
+      const tickers = stockAccounts.map(s => encodeURIComponent(s.ticker)).join(',');
+      let tickerResult = {};
+      try {
+        const res = await fetch(`/api/nav?tickers=${tickers}`);
+        tickerResult = await res.json();
+      } catch {}
+      for (const s of stockAccounts) {
+        const label = s.name.replace(/^ST /, '');
+        const key = s.navKey ?? s.ticker;
+        const entry = tickerResult[s.ticker];
+        if (entry?.nav != null) {
+          this.navData[key] = { nav: entry.nav, date: null };
+          results.push({ label: `${label} ${entry.nav.toFixed(2)}`, ok: true });
+        } else {
+          failedEntries.push(s);
+          results.push({ label, ok: false });
+        }
+      }
+    }
+
+    return { results, failedEntries };
   },
 
   _loadNavFromCache() {
@@ -811,9 +868,10 @@ const InvestmentsPage = {
   },
 
   _renderNavUpdateBtn() {
-    const { loading, results } = this.navFetchState;
+    const { loading, results, failed } = this.navFetchState;
+    const failedCount = failed?.length ?? 0;
 
-    const resultChips = results.length
+    const resultChips = results?.length
       ? `<div class="flex flex-wrap gap-1 mt-1.5">
           ${results.map(r => `
             <span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium
@@ -834,13 +892,23 @@ const InvestmentsPage = {
     }
 
     return `<div id="nav-update-area" class="flex flex-col items-end">
-      <button onclick="InvestmentsPage.updatePrices()"
-        class="inline-flex items-center gap-2 bg-blue-500 hover:bg-blue-600
-               text-white px-4 py-2.5 rounded-lg font-medium text-sm
-               transition-colors shadow-sm active:scale-[0.98]">
-        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-        อัปเดตราคา
-      </button>
+      <div class="flex gap-2">
+        ${failedCount > 0 ? `
+        <button onclick="InvestmentsPage.retryFailed()"
+          class="inline-flex items-center gap-2 bg-red-50 hover:bg-red-100 border border-red-200
+                 text-red-600 px-4 py-2.5 rounded-lg font-medium text-sm
+                 transition-colors active:scale-[0.98]">
+          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          ลองใหม่ (${failedCount})
+        </button>` : ''}
+        <button onclick="InvestmentsPage.updatePrices()"
+          class="inline-flex items-center gap-2 bg-blue-500 hover:bg-blue-600
+                 text-white px-4 py-2.5 rounded-lg font-medium text-sm
+                 transition-colors shadow-sm active:scale-[0.98]">
+          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          อัปเดตราคา
+        </button>
+      </div>
       ${resultChips}
     </div>`;
   },
@@ -848,63 +916,44 @@ const InvestmentsPage = {
   async updatePrices() {
     if (this.navFetchState.loading || !window.FUND_ACCOUNTS) return;
 
-    this.navFetchState = { loading: true, results: [] };
-    const updateArea = document.getElementById('nav-update-area');
-    if (updateArea) {
-      updateArea.innerHTML = `
-        <button disabled class="inline-flex items-center gap-2 bg-slate-100 text-slate-400 px-4 py-2.5 rounded-lg font-medium text-sm cursor-not-allowed">
-          <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
-          <span id="nav-status-text">กำลังเริ่ม...</span>
-        </button>`;
-      if (window.lucide) lucide.createIcons();
-    }
+    this.navFetchState = { loading: true, results: [], failed: [] };
+    this._setNavAreaLoading();
 
     const setMsg = (msg) => {
       const el = document.getElementById('nav-status-text');
       if (el) el.textContent = msg;
     };
 
-    const results = [];
     const fundAccounts = window.FUND_ACCOUNTS.filter(f => f.source !== 'yahoo');
     const stockAccounts = window.FUND_ACCOUNTS.filter(f => f.source === 'yahoo');
 
-    if (fundAccounts.length) {
-      setMsg(`กำลังดึงกองทุนรวม ${fundAccounts.length} รายการ...`);
-      const navResult = await this._fetchMutualFundNAV(fundAccounts);
-      for (const [k, v] of Object.entries(navResult)) {
-        if (v?.nav != null) this.navData[k] = v;
-      }
-      for (const f of fundAccounts) {
-        const entry = navResult[f.navKey];
-        const ok = !!(entry?.nav);
-        results.push({
-          label: `${f.navKey}${ok ? ' ' + Number(entry.nav).toFixed(entry.nav > 100 ? 2 : 4) : ''}`,
-          ok,
-        });
-      }
-    }
-
-    for (const s of stockAccounts) {
-      const label = s.name.replace(/^ST /, '');
-      setMsg(`กำลังดึงราคาหุ้น ${label}...`);
-      try {
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${s.ticker}?interval=1d&range=1d`;
-        const res = await fetch(url);
-        const json = await res.json();
-        const price = json?.chart?.result?.[0]?.meta?.regularMarketPrice;
-        if (price != null) {
-          this.navData[s.navKey ?? s.ticker] = { nav: price, date: null };
-          results.push({ label: `${label} ${price.toFixed(2)}`, ok: true });
-        } else {
-          results.push({ label, ok: false });
-        }
-      } catch {
-        results.push({ label, ok: false });
-      }
-    }
+    const { results, failedEntries } = await this._doFetchPrices(fundAccounts, stockAccounts, setMsg);
 
     this._saveNavToCache();
-    this.navFetchState = { loading: false, results };
+    this.navFetchState = { loading: false, results, failed: failedEntries };
+    await this.refresh();
+  },
+
+  async retryFailed() {
+    const toRetry = this.navFetchState.failed;
+    if (!toRetry?.length || this.navFetchState.loading) return;
+
+    const prevOkResults = this.navFetchState.results.filter(r => r.ok);
+    this.navFetchState = { loading: true, results: [], failed: [] };
+    this._setNavAreaLoading();
+
+    const setMsg = (msg) => {
+      const el = document.getElementById('nav-status-text');
+      if (el) el.textContent = msg;
+    };
+
+    const fundAccounts = toRetry.filter(f => f.source !== 'yahoo');
+    const stockAccounts = toRetry.filter(f => f.source === 'yahoo');
+
+    const { results: newResults, failedEntries } = await this._doFetchPrices(fundAccounts, stockAccounts, setMsg);
+
+    this._saveNavToCache();
+    this.navFetchState = { loading: false, results: [...prevOkResults, ...newResults], failed: failedEntries };
     await this.refresh();
   },
 
