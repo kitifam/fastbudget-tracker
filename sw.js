@@ -1,5 +1,5 @@
 // Bump เมื่อ deploy version ใหม่ -- ให้ตรงกับ AppConfig.version ใน js/config.js
-const CACHE_NAME = "fastbudget-pwa-v5.2";
+const CACHE_NAME = "fastbudget-pwa-v5.2.1";
 const APP_SHELL = [
   "./", // index.html
   "./dashboard.html",
