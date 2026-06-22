@@ -6,6 +6,7 @@
 window.TransactionsPage = {
     _safeIcon(icon) {
         if (!icon || icon === 'interest') return 'badge-percent';
+        if (icon.startsWith('ic_')) return 'tag';
         return icon;
     },
 
@@ -21,7 +22,7 @@ window.TransactionsPage = {
         accountId: null,
         accountType: null,
         categoryId: null,
-        dateFrom: null,   
+        dateFrom: null,
         dateTo: null,
         search: null,
         excludeCategories: null,
@@ -30,7 +31,8 @@ window.TransactionsPage = {
         selectedYear: new Date().getFullYear(),
         showSearch: false,
         sortBy: 'date',
-        ascending: false
+        ascending: false,
+        contextLabel: null,
     },
 
     pendingCheckedStates: {}, // txId -> boolean
@@ -239,6 +241,9 @@ window.TransactionsPage = {
     },
   
     _renderFilters() {
+      const chipAccount = this.filters.accountId
+        ? this.accounts.find(a => String(a.id) === String(this.filters.accountId))
+        : null;
       return `
         <div class="bg-white border-b border-slate-200 p-3 shadow-sm flex flex-col gap-3">
           <!-- Search & Clear Row -->
@@ -254,6 +259,20 @@ window.TransactionsPage = {
                   <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
               </button>
           </div>
+
+          <!-- Active Filter Chips -->
+          ${chipAccount ? `
+          <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-[10px] text-slate-400 uppercase font-semibold tracking-wide">กรองตาม:</span>
+              <span class="inline-flex items-center gap-1.5 bg-blue-100 text-blue-700 text-xs font-medium px-2.5 py-1 rounded-full border border-blue-200">
+                  <i data-lucide="landmark" class="w-3 h-3"></i>
+                  ${chipAccount.name}
+                  <button onclick="TransactionsPage.clearContextFilter()" class="ml-0.5 hover:text-blue-900 transition-colors" title="ล้าง filter นี้">
+                      <i data-lucide="x" class="w-3 h-3"></i>
+                  </button>
+              </span>
+          </div>
+          ` : ''}
 
           <!-- Main Filter Grid -->
           <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
@@ -287,13 +306,13 @@ window.TransactionsPage = {
 
               <!-- Individual Account -->
               <div class="relative group">
-                  <div class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-focus-within:text-blue-500">
+                  <div class="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none ${this.filters.accountId ? 'text-blue-500' : 'text-slate-400 group-focus-within:text-blue-500'}">
                       <i data-lucide="landmark" class="w-3.5 h-3.5"></i>
                   </div>
                   <select id="tx-filter-account" onchange="TransactionsPage.applyFilters()"
-                      class="w-full pl-8 pr-2 py-2 border border-slate-100 rounded-lg text-xs bg-slate-50 focus:outline-none appearance-none cursor-pointer">
+                      class="w-full pl-8 pr-2 py-2 rounded-lg text-xs focus:outline-none appearance-none cursor-pointer ${this.filters.accountId ? 'bg-blue-50 border border-blue-300 text-blue-700 font-medium' : 'bg-slate-50 border border-slate-100'}">
                       <option value="">รายบัญชี</option>
-                      ${this.accounts.map(a => `<option value="${a.id}" ${this.filters.accountId === a.id ? 'selected' : ''}>${a.name}</option>`).join('')}
+                      ${this.accounts.map(a => `<option value="${a.id}" ${String(this.filters.accountId) === String(a.id) ? 'selected' : ''}>${a.name}</option>`).join('')}
                   </select>
               </div>
 
@@ -385,10 +404,18 @@ window.TransactionsPage = {
         this.filters.dateTo = null;
         this.filters.search = null;
         this.filters.excludeCategories = null;
+        this.filters.contextLabel = null;
         this.filters.page = 1;
         this.filters.sortBy = 'date';
         this.filters.ascending = false;
         this.pendingCheckedStates = {};
+        this.refresh();
+    },
+
+    clearContextFilter() {
+        this.filters.accountId = null;
+        this.filters.contextLabel = null;
+        this.filters.page = 1;
         this.refresh();
     },
 
@@ -405,6 +432,7 @@ window.TransactionsPage = {
             excludeCategories: null,
             page: 1,
             showSearch: false,
+            contextLabel: null,
             ...overrides
         };
         this.pendingCheckedStates = {};

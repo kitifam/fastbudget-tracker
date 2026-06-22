@@ -81,6 +81,8 @@ const DB = {
   // Credit cards live in the credit_cards table only — not in the account table
   _accountType(name) {
     const n = (name || '').trim();
+    if (n.startsWith('FND ')) return 'mutual_fund';
+    if (n.startsWith('ST ')) return 'stock';
     const normalized = n.toLowerCase().replace(/[\s()\-_.]/g, '');
     if (n === 'Fund mgt') return 'mutual_fund';
     if (n === 'หุ้น') return 'stock';
@@ -96,7 +98,7 @@ const DB = {
 
   async getAccounts(_userId) {
     const rows = this._query(`
-      SELECT _id as id, name, value as balance, initial_funds, currency, use_account, position
+      SELECT _id as id, name, value as balance, initial_funds, notes, currency, use_account, position
       FROM account
       WHERE use_account >= 1
       ORDER BY position ASC, name ASC
@@ -109,9 +111,95 @@ const DB = {
       currency: r.currency || 'THB',
       color: null,
       initial_funds: r.initial_funds || 0,
+      notes: r.notes || '',
       use_account: r.use_account,
       investments: []
     }));
+  },
+
+  getInvestmentLots(accountName) {
+    const rows = this._query(
+      `SELECT value, date, notes, from_or_to, i_e
+       FROM income_or_expense
+       WHERE (
+         (i_e = 2 AND (account = ? OR from_or_to = ?))
+         OR (i_e != 2 AND account = ?)
+       ) AND notes LIKE '%--units%'
+       ORDER BY date ASC`,
+      [accountName, accountName, accountName]
+    );
+
+    // หา --units-total ล่าสุด: ล้าง lots ก่อนหน้า เริ่มนับจากยอดนั้น + --units ที่ตามมา
+    let checkpointIdx = -1;
+    let checkpointUnits = 0;
+    let checkpointDate = null;
+    rows.forEach((row, i) => {
+      const m = (row.notes || '').match(/--units-total\s+([\d.]+)/);
+      if (m) { checkpointIdx = i; checkpointUnits = parseFloat(m[1]); checkpointDate = row.date; }
+    });
+
+    const result = [];
+    if (checkpointIdx >= 0) {
+      // synthetic lot ตัวแทน units ก่อน checkpoint (cost=0 เพราะไม่รู้ต้นทุนเก่า)
+      result.push({ date: this._msToDate(checkpointDate), cost: 0, units: checkpointUnits, type: 'buy', _isCheckpoint: true });
+      for (const r of rows.slice(checkpointIdx + 1)) {
+        const m = (r.notes || '').match(/--units\s+([-\d.]+)/);
+        const units = m ? parseFloat(m[1]) : 0;
+        if (units !== 0) result.push({ date: this._msToDate(r.date), cost: r.value || 0, units, type: units >= 0 ? 'buy' : 'sell', from_or_to: r.from_or_to || '', i_e: r.i_e });
+      }
+    } else {
+      for (const r of rows) {
+        const m = (r.notes || '').match(/--units\s+([-\d.]+)/);
+        const units = m ? parseFloat(m[1]) : 0;
+        result.push({ date: this._msToDate(r.date), cost: r.value || 0, units, type: units >= 0 ? 'buy' : 'sell', from_or_to: r.from_or_to || '', i_e: r.i_e });
+      }
+    }
+    return result;
+  },
+
+  // คำนวณ net balance จาก transactions รวม transfer (ใช้เมื่อ account.value = 0)
+  // income(i_e=1) = +, expense(i_e=0) = -, transfer ออก(account=X,i_e=2) = -, transfer เข้า(from_or_to=X,i_e=2) = +
+  getAccountNetBalance(accountName) {
+    const row = this._queryOne(
+      `SELECT SUM(
+          CASE
+            WHEN i_e = 1 THEN value
+            WHEN i_e = 0 THEN -value
+            WHEN i_e = 2 AND account = ? THEN -value
+            WHEN i_e = 2 AND from_or_to = ? THEN value
+            ELSE 0
+          END
+        ) as bal
+       FROM income_or_expense
+       WHERE account = ? OR (i_e = 2 AND from_or_to = ?)`,
+      [accountName, accountName, accountName, accountName]
+    );
+    return Math.max(0, row?.bal ?? 0);
+  },
+
+  // หุ้นกู้: buy = income (notes=ชื่อหุ้นกู้)
+  // ครบกำหนด/ขาย: แก้ Notes ของ transaction ซื้อให้เพิ่ม --expire ต่อท้าย
+  getAccountBondHoldings(accountName) {
+    const rows = this._query(
+      `SELECT value, date, notes FROM income_or_expense
+       WHERE account = ? AND i_e = 1
+         AND notes IS NOT NULL AND notes != ''
+         AND LOWER(notes) NOT LIKE '%bfixed%'
+         AND LOWER(notes) NOT LIKE '%กองทุนรวม%'
+       ORDER BY date ASC`,
+      [accountName]
+    );
+    const map = {};
+    for (const row of rows) {
+      const raw = (row.notes || '').trim();
+      const matured = /--expire/i.test(raw);
+      const name = raw.replace(/\s*--expire.*/i, '').trim();
+      if (!name) continue;
+      if (!map[name]) map[name] = { name, totalValue: 0, firstBuyDate: this._msToDate(row.date), matured };
+      map[name].totalValue += row.value || 0;
+      if (matured) map[name].matured = true;
+    }
+    return Object.values(map).sort((a, b) => a.matured === b.matured ? 0 : a.matured ? 1 : -1);
   },
 
   // =========================
@@ -211,16 +299,40 @@ const DB = {
 
     // accountType filter: match accounts by type heuristic
     if (accountType) {
-      const allAccounts = await this.getAccounts(null);
-      const matchedIds = allAccounts
-        .filter(a => a.type === accountType)
-        .map(a => a.id);
-      if (matchedIds.length) {
-        const ph = matchedIds.map(() => '?').join(',');
-        conditions.push(`a._id IN (${ph})`);
-        params.push(...matchedIds);
+      if (accountType === 'investment') {
+        const allAccounts = await this.getAccounts(null);
+        const matchedIds = allAccounts
+          .filter(a => ['mutual_fund', 'stock', 'gold', 'investment'].includes(a.type))
+          .map(a => a.id);
+        if (matchedIds.length) {
+          const ph = matchedIds.map(() => '?').join(',');
+          conditions.push(`a._id IN (${ph})`);
+          params.push(...matchedIds);
+        } else {
+          conditions.push('1=0');
+        }
+      } else if (accountType === 'credit_card') {
+        const creditCards = await this.getCreditCards(null);
+        const cardNames = creditCards.map(c => c.bank_name).filter(Boolean);
+        if (cardNames.length) {
+          const ph = cardNames.map(() => '?').join(',');
+          conditions.push(`e.account IN (${ph})`);
+          params.push(...cardNames);
+        } else {
+          conditions.push('1=0');
+        }
       } else {
-        conditions.push('1=0');
+        const allAccounts = await this.getAccounts(null);
+        const matchedIds = allAccounts
+          .filter(a => a.type === accountType)
+          .map(a => a.id);
+        if (matchedIds.length) {
+          const ph = matchedIds.map(() => '?').join(',');
+          conditions.push(`a._id IN (${ph})`);
+          params.push(...matchedIds);
+        } else {
+          conditions.push('1=0');
+        }
       }
     }
 
@@ -458,6 +570,29 @@ const DB = {
       total: r.total || 0,
       txCount: r.tx_count || 0
     }));
+  },
+
+  // =========================
+  // DEBUG (ลบทิ้งหลังใช้งาน)
+  // =========================
+
+  debugAccount(accountName) {
+    const acct = this._queryOne(`SELECT _id, name, value, initial_funds FROM account WHERE name = ?`, [accountName]);
+    const tx = this._queryOne(`
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN i_e = 1 THEN value ELSE 0 END) as income,
+        SUM(CASE WHEN i_e = 0 THEN value ELSE 0 END) as expense,
+        SUM(CASE WHEN i_e = 2 AND account = ? THEN value ELSE 0 END) as transfer_out,
+        SUM(CASE WHEN i_e = 2 AND from_or_to = ? THEN value ELSE 0 END) as transfer_in
+      FROM income_or_expense
+      WHERE account = ? OR (i_e = 2 AND from_or_to = ?)
+    `, [accountName, accountName, accountName, accountName]);
+    console.table({ ...acct });
+    console.table({ ...tx });
+    console.log('net (i_e 0+1 only):', (tx.income || 0) - (tx.expense || 0));
+    console.log('net (incl transfer):', (tx.income || 0) - (tx.expense || 0) - (tx.transfer_out || 0) + (tx.transfer_in || 0));
+    return { acct, tx };
   },
 
   // =========================

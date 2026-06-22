@@ -1,5 +1,15 @@
 // Config — SQLite local database version
 
+// ================================================================
+// แก้ที่นี่เพียงจุดเดียว เมื่อต้องการเปลี่ยนชื่อหรือ version ของแอป
+// หลังแก้: ให้ bump CACHE_NAME ใน sw.js ด้วย (เพื่อ clear service worker cache)
+// ================================================================
+window.AppConfig = {
+  name: 'FastBudget Tracker',
+  version: 'v5.2',
+  get fullName() { return `${this.name} ${this.version}`; },
+};
+
 window.AppUrl = {
   resolve(path = '') {
     const normalizedPath = String(path).replace(/^\//, '');
@@ -128,6 +138,23 @@ window.Format = {
     return new Date(val).toLocaleDateString('th-TH');
   }
 };
+
+window.FUND_ACCOUNTS = [
+  // กองทุนหุ้น (ชื่อ account ต้องตรงกับ Fast Budget)
+  { name: 'FND SCBS&P500A',   type: 'mutual_fund', source: 'scbam',    navKey: 'SCBS&P500A',    scbamPath: '/th/fund/foreign-investment-fund-equity/fund-information/scbs-p500a' },
+  { name: 'FND SCBS&P500E',   type: 'mutual_fund', source: 'scbam',    navKey: 'SCBS&P500E',    scbamPath: '/th/fund/morningstar/fund-information/scbs-p500e' },
+  // RMF (ชื่อ account ใช้รูปแบบ R+เลข ตาม Fast Budget)
+  { name: 'R1 SCBRMS&P500',   type: 'mutual_fund', source: 'scbam',    navKey: 'SCBRMS&P500',   scbamPath: '/en/fund/rmf/fund-information/scbrms-p500' },
+  { name: 'R2 KFGTECHRMF',    type: 'mutual_fund', source: 'navtable', navKey: 'KFGTECHRMF',    color: '#FFCC00' },
+  { name: 'R3 TMBGQGRMF',     type: 'mutual_fund', source: 'navtable', navKey: 'TMBGQGRMF' ,  color: '#004C92' },
+  { name: 'R4 B-INNOTECHRMF', type: 'mutual_fund', source: 'navtable', navKey: 'B-INNOTECHRMF', color: '#1E4598' },
+  { name: 'R4 B-USAlphaRMF',  type: 'mutual_fund', source: 'navtable', navKey: 'B-USAlpha-RMF' , color: '#1E4598'},
+  // กองทุนพันธบัตร/ตลาดเงิน
+  { name: 'FND BFIXED',       type: 'mutual_fund', source: 'navtable', navKey: 'BFIXED',         color: '#1E4598' },
+  // หุ้น
+  { name: 'ST SKY',           type: 'stock',       source: 'yahoo',    ticker: 'SKY.BK',         color: '#55a630' },
+  { name: 'ST BRKB80',        type: 'stock',       source: 'yahoo',    ticker: 'BRKB80.BK',      color: '#55a630' },
+];
 
 // Initialize sql.js and load a .bak file
 window.sqlDbFileName = '';

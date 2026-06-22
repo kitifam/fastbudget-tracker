@@ -416,9 +416,11 @@ const AccountsPage = {
 
   async viewTransactions(accountId) {
     if (typeof TransactionsPage !== 'undefined') {
+      const account = this.accounts.find(a => String(a.id) === String(accountId));
       TransactionsPage.resetContextFilters({
         accountId,
-        showSearch: true
+        showSearch: true,
+        contextLabel: account?.name || null,
       });
     }
     navigate('transactions');

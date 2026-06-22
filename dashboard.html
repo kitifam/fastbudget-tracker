@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FastBudget Tracker v1</title>
+  <title>FastBudget Tracker</title>
 
   <!-- TailwindCSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -22,8 +22,8 @@
   <link rel="stylesheet" href="css/styles.css">
   <meta name="theme-color" content="#0f172a">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="icon" href="./icons/icon-192.png" sizes="192x192" type="image/png">
-  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="icon" href="./icons/logo192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="./icons/logo192.png">
   <script src="./pwa-register.js?v=20260430-2" defer></script>
 </head>
 
@@ -36,7 +36,7 @@
       <div class="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-lg shadow-blue-200">
         <i data-lucide="database" class="w-8 h-8 text-white"></i>
       </div>
-      <h1 class="text-2xl font-bold text-slate-800 mb-2">FastBudget Tracker</h1>
+      <h1 class="text-2xl font-bold text-slate-800 mb-2" data-app-name>FastBudget Tracker</h1>
       <p class="text-slate-500 text-sm mb-6">เลือกไฟล์ FastBudget Database (.bak) เพื่อเริ่มต้น</p>
 
       <label for="db-file-input"
@@ -70,7 +70,7 @@
     <button onclick="toggleSidebar()" class="p-2 hover:bg-slate-100 rounded-lg transition-colors">
       <i data-lucide="menu" class="w-5 h-5 text-slate-600"></i>
     </button>
-    <h1 class="font-semibold text-slate-800">FastBudget Tracker</h1>
+    <h1 class="font-semibold text-slate-800" data-app-name>FastBudget Tracker</h1>
     <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
       <i data-lucide="database" class="w-4 h-4 text-blue-500"></i>
     </div>
@@ -86,10 +86,10 @@
     <!-- Logo -->
     <div class="p-5 border-b border-slate-100">
       <div class="flex items-center gap-3">
-        <div class="w-9 h-9 bg-blue-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
-          <i data-lucide="wallet" class="w-5 h-5 text-white"></i>
+        <div class="w-9 h-9 rounded-xl overflow-hidden shadow-lg flex-shrink-0">
+          <img src="./icons/logo192.png" class="w-full h-full object-cover" alt="logo">
         </div>
-        <span class="font-bold text-slate-800">FastBudget Tracker</span>
+        <span class="font-bold text-slate-800" data-app-fullname>FastBudget Tracker</span>
       </div>
     </div>
 
@@ -172,13 +172,21 @@
   <script src="https://cdn.jsdelivr.net/npm/recharts@2.1.12/umd/Recharts.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7/babel.min.js"></script>
 
-  <script src="js/config.js?v=6"></script>
+  <script src="js/config.js?v=9"></script>
+  <script>
+    if (window.AppConfig) {
+      document.title = window.AppConfig.fullName;
+      document.querySelectorAll('[data-app-name]').forEach(el => { el.textContent = window.AppConfig.name; });
+      document.querySelectorAll('[data-app-fullname]').forEach(el => { el.textContent = window.AppConfig.fullName; });
+    }
+  </script>
   <script src="js/toast.js?v=2"></script>
   <script src="js/auth.js?v=2"></script>
-  <script src="js/db.js?v=9"></script>
-  <script src="js/components/transactions.js?v=3"></script>
-  <script src="js/components/accounts.js?v=6"></script>
-  <script src="js/components/investments.js?v=4"></script>
+  <script src="js/transaction-rules.js?v=1"></script>
+  <script src="js/db.js?v=18"></script>
+  <script src="js/components/transactions.js?v=6"></script>
+  <script src="js/components/accounts.js?v=8"></script>
+  <script src="js/components/investments.js?v=16"></script>
   <script type="text/babel" src="js/components/overview.jsx?v=7"></script>
   <script src="js/components/creditcards.js?v=6"></script>
   <script src="js/components/reports.js?v=6"></script>
