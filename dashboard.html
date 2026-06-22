@@ -72,6 +72,28 @@
     </div>
   </div>
 
+  <!-- ===== PWA INSTALL BANNER ===== -->
+  <div id="pwa-install-banner"
+    class="hidden fixed bottom-0 left-0 right-0 z-[300] p-3 safe-area-pb">
+    <div class="max-w-lg mx-auto bg-slate-800 text-white rounded-2xl shadow-2xl px-4 py-3 flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-blue-500 flex items-center justify-center flex-shrink-0">
+        <i data-lucide="smartphone" class="w-5 h-5 text-white"></i>
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-semibold leading-tight">ติดตั้ง FastBudget</p>
+        <p class="text-[11px] text-slate-400 leading-tight mt-0.5">เพิ่มลงหน้าจอหลักเพื่อใช้งานได้ทันที</p>
+      </div>
+      <button id="pwa-install-btn"
+        class="flex-shrink-0 bg-blue-500 hover:bg-blue-400 active:bg-blue-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">
+        ติดตั้ง
+      </button>
+      <button id="pwa-dismiss-btn"
+        class="flex-shrink-0 p-1.5 text-slate-400 hover:text-white transition-colors rounded-lg">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </div>
+
   <div id="pull-refresh-indicator"
     class="fixed top-2 left-1/2 -translate-x-1/2 z-50 hidden bg-white border border-slate-200 rounded-full px-3 py-1.5 shadow-sm flex items-center gap-2">
     <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-blue-500"></i>
@@ -465,6 +487,41 @@
       document.getElementById('android-path-hint').classList.remove('hidden');
       lucide.createIcons();
     }
+
+    (function() {
+      const banner = document.getElementById('pwa-install-banner');
+      const installBtn = document.getElementById('pwa-install-btn');
+      const dismissBtn = document.getElementById('pwa-dismiss-btn');
+
+      function showBanner() {
+        if (sessionStorage.getItem('pwa-banner-dismissed')) return;
+        banner.classList.remove('hidden');
+        lucide.createIcons();
+      }
+
+      if (window.PWAInstallPrompt?.canInstall) {
+        showBanner();
+      }
+      window.addEventListener('pwa-install-available', showBanner);
+
+      installBtn.addEventListener('click', async () => {
+        const prompt = window.PWAInstallPrompt?.event;
+        if (!prompt) return;
+        banner.classList.add('hidden');
+        prompt.prompt();
+        const { outcome } = await prompt.userChoice;
+        if (outcome === 'accepted') {
+          window.PWAInstallPrompt.event = null;
+        }
+      });
+
+      dismissBtn.addEventListener('click', () => {
+        banner.classList.add('hidden');
+        sessionStorage.setItem('pwa-banner-dismissed', '1');
+      });
+
+      window.addEventListener('pwa-install-changed', () => banner.classList.add('hidden'));
+    })();
 
     window.copyAndroidPath = async function() {
       const path = 'Android/data/com.bloahgard.easybudget/files/Backup/';
