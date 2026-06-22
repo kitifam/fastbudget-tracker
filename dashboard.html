@@ -46,6 +46,20 @@
       </label>
       <input id="db-file-input" type="file" accept=".bak,.db,.sqlite,.sqlite3" class="hidden">
 
+      <div id="android-path-hint" class="hidden mt-5 text-left bg-slate-50 rounded-xl p-4 border border-slate-100">
+        <p class="text-xs font-semibold text-slate-500 mb-2 flex items-center gap-1.5">
+          <i data-lucide="info" class="w-3.5 h-3.5 text-blue-400"></i>
+          ตำแหน่งไฟล์ EasyBudget บน Android
+        </p>
+        <div class="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-slate-200">
+          <code class="text-[11px] text-slate-600 flex-1 break-all leading-relaxed">Android/data/com.bloahgard.easybudget/files/Backup/</code>
+          <button onclick="copyAndroidPath()" class="flex-shrink-0 p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-700 transition-colors" title="คัดลอก path">
+            <i data-lucide="copy" id="copy-path-icon" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+        <p class="text-[10px] text-slate-400 mt-2">นำทางไปยัง path นี้ในตัวจัดการไฟล์ แล้วเลือกไฟล์ .bak ล่าสุด</p>
+      </div>
+
       <div id="db-loading" class="hidden mt-5">
         <div class="flex items-center justify-center gap-2 text-blue-600">
           <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
@@ -446,6 +460,22 @@
 
     // Show file picker immediately — user must load a DB first
     // (overlay is visible by default in HTML)
+
+    if (/android/i.test(navigator.userAgent)) {
+      document.getElementById('android-path-hint').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    window.copyAndroidPath = async function() {
+      const path = 'Android/data/com.bloahgard.easybudget/files/Backup/';
+      try {
+        await navigator.clipboard.writeText(path);
+        const icon = document.getElementById('copy-path-icon');
+        icon.setAttribute('data-lucide', 'check');
+        lucide.createIcons();
+        setTimeout(() => { icon.setAttribute('data-lucide', 'copy'); lucide.createIcons(); }, 2000);
+      } catch {}
+    };
   </script>
 
 </body>
