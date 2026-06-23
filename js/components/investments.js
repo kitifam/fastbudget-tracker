@@ -177,9 +177,10 @@ const InvestmentsPage = {
 
         const { netUnits, investedAmount: calcInvested } = this._calcLots(lots);
         if (netUnits <= 0) continue;
+        const netBal = DB.getAccountNetBalance(account.name);
         const investedAmount = lots.some(l => l._isCheckpoint)
-          ? DB.getAccountNetBalance(account.name)
-          : calcInvested;
+          ? netBal
+          : Math.max(calcInvested, netBal);
 
         account.investments = [{
           current_value: netUnits * navEntry.nav,
@@ -520,7 +521,8 @@ const InvestmentsPage = {
     const lots = DB.getInvestmentLots(accountName);
     const hasCheckpoint = lots.some(l => l._isCheckpoint);
     const { buys, sells, netUnits, investedAmount: calcInvested } = this._calcLots(lots);
-    const investedAmount = hasCheckpoint ? DB.getAccountNetBalance(accountName) : calcInvested;
+    const netBal = DB.getAccountNetBalance(accountName);
+    const investedAmount = hasCheckpoint ? netBal : Math.max(calcInvested, netBal);
 
     const currentValue = inv?.current_value ?? 0;
     const totalProfit = currentValue - investedAmount;
@@ -868,22 +870,11 @@ const InvestmentsPage = {
   },
 
   _renderNavUpdateBtn() {
-    const { loading, results, failed } = this.navFetchState;
+    const { loading, failed } = this.navFetchState;
     const failedCount = failed?.length ?? 0;
 
-    const resultChips = results?.length
-      ? `<div class="flex flex-wrap gap-1 mt-1.5">
-          ${results.map(r => `
-            <span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium
-                ${r.ok ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-600 border border-red-200'}">
-              <i data-lucide="${r.ok ? 'check' : 'x'}" class="w-2.5 h-2.5"></i>
-              ${r.label}
-            </span>`).join('')}
-        </div>`
-      : '';
-
     if (loading) {
-      return `<div id="nav-update-area" class="flex flex-col items-end">
+      return `<div id="nav-update-area" class="flex items-end">
         <button disabled class="inline-flex items-center gap-2 bg-slate-100 text-slate-400 px-4 py-2.5 rounded-lg font-medium text-sm cursor-not-allowed">
           <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
           <span id="nav-status-text">กำลังดึง...</span>
@@ -891,25 +882,22 @@ const InvestmentsPage = {
       </div>`;
     }
 
-    return `<div id="nav-update-area" class="flex flex-col items-end">
-      <div class="flex gap-2">
-        ${failedCount > 0 ? `
-        <button onclick="InvestmentsPage.retryFailed()"
-          class="inline-flex items-center gap-2 bg-red-50 hover:bg-red-100 border border-red-200
-                 text-red-600 px-4 py-2.5 rounded-lg font-medium text-sm
-                 transition-colors active:scale-[0.98]">
-          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-          ลองใหม่ (${failedCount})
-        </button>` : ''}
-        <button onclick="InvestmentsPage.updatePrices()"
-          class="inline-flex items-center gap-2 bg-blue-500 hover:bg-blue-600
-                 text-white px-4 py-2.5 rounded-lg font-medium text-sm
-                 transition-colors shadow-sm active:scale-[0.98]">
-          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-          อัปเดตราคา
-        </button>
-      </div>
-      ${resultChips}
+    return `<div id="nav-update-area" class="flex items-center gap-2">
+      ${failedCount > 0 ? `
+      <button onclick="InvestmentsPage.retryFailed()"
+        class="inline-flex items-center gap-2 bg-red-50 hover:bg-red-100 border border-red-200
+               text-red-600 px-4 py-2.5 rounded-lg font-medium text-sm
+               transition-colors active:scale-[0.98]">
+        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+        ลองใหม่ (${failedCount})
+      </button>` : ''}
+      <button onclick="InvestmentsPage.updatePrices()"
+        class="inline-flex items-center gap-2 bg-blue-500 hover:bg-blue-600
+               text-white px-4 py-2.5 rounded-lg font-medium text-sm
+               transition-colors shadow-sm active:scale-[0.98]">
+        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+        อัปเดตราคา
+      </button>
     </div>`;
   },
 
@@ -930,15 +918,17 @@ const InvestmentsPage = {
     const { results, failedEntries } = await this._doFetchPrices(fundAccounts, stockAccounts, setMsg);
 
     this._saveNavToCache();
-    this.navFetchState = { loading: false, results, failed: failedEntries };
+    this.navFetchState = { loading: false, results: [], failed: failedEntries };
     await this.refresh();
+    for (const r of results) {
+      Toast.show(r.label, r.ok ? 'success' : 'error', r.ok ? 5000 : 0);
+    }
   },
 
   async retryFailed() {
     const toRetry = this.navFetchState.failed;
     if (!toRetry?.length || this.navFetchState.loading) return;
 
-    const prevOkResults = this.navFetchState.results.filter(r => r.ok);
     this.navFetchState = { loading: true, results: [], failed: [] };
     this._setNavAreaLoading();
 
@@ -953,8 +943,11 @@ const InvestmentsPage = {
     const { results: newResults, failedEntries } = await this._doFetchPrices(fundAccounts, stockAccounts, setMsg);
 
     this._saveNavToCache();
-    this.navFetchState = { loading: false, results: [...prevOkResults, ...newResults], failed: failedEntries };
+    this.navFetchState = { loading: false, results: [], failed: failedEntries };
     await this.refresh();
+    for (const r of newResults) {
+      Toast.show(r.label, r.ok ? 'success' : 'error', r.ok ? 5000 : 0);
+    }
   },
 
   openManualPriceEdit(accountId) {

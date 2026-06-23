@@ -14,9 +14,11 @@ const Toast = {
   },
 
   // type: 'success' | 'error' | 'info' | 'warning' | 'caution'
+  // duration = 0 → persistent: no auto-dismiss, shows close button
   show(message, type = 'success', duration = 3000) {
     if (!this.container) this.init();
 
+    const isPersistent = duration === 0;
     const toast = document.createElement('div');
 
     const colors = {
@@ -36,7 +38,7 @@ const Toast = {
     };
 
     toast.className = `
-      ${colors[type] || colors.info} px-4 py-3 rounded-lg shadow-lg
+      ${colors[type] || colors.info} px-4 py-3 rounded-lg shadow-lg relative
       flex items-center gap-2 min-w-72
       transform translate-x-full opacity-0
       transition-all duration-300 ease-out
@@ -44,7 +46,8 @@ const Toast = {
 
     toast.innerHTML = `
       <i data-lucide="${icons[type]}" class="w-5 h-5 shrink-0"></i>
-      <span class="text-sm font-medium">${message}</span>
+      <span class="text-sm font-medium flex-1">${message}</span>
+      ${isPersistent ? '<button class="toast-close ml-1 p-0.5 rounded hover:opacity-75 shrink-0 flex items-center"><i data-lucide="x" class="w-4 h-4"></i></button>' : ''}
     `;
 
     const progressColor = {
@@ -60,6 +63,7 @@ const Toast = {
     progress.style.transformOrigin = 'left center';
     progress.style.transform = 'scaleX(1)';
     progress.style.transition = 'transform 0.05s linear';
+    if (isPersistent) progress.style.display = 'none';
     toast.appendChild(progress);
 
     this.container.appendChild(toast);
@@ -70,6 +74,23 @@ const Toast = {
       toast.classList.remove('translate-x-full', 'opacity-0');
       toast.classList.add('translate-x-0', 'opacity-100');
     });
+
+    const removeToast = () => {
+      toast.classList.remove('translate-x-0', 'opacity-100');
+      toast.classList.add('translate-x-full', 'opacity-0');
+      setTimeout(() => {
+        const state = this.activeTimers.get(toast);
+        if (state?.rafId) cancelAnimationFrame(state.rafId);
+        this.activeTimers.delete(toast);
+        toast.remove();
+      }, 300);
+    };
+
+    if (isPersistent) {
+      const closeBtn = toast.querySelector('.toast-close');
+      if (closeBtn) closeBtn.addEventListener('click', removeToast);
+      return;
+    }
 
     const timerState = {
       startTs: performance.now(),
@@ -92,17 +113,6 @@ const Toast = {
       if (state.remaining > 0) {
         state.rafId = requestAnimationFrame(step);
       }
-    };
-
-    const removeToast = () => {
-      toast.classList.remove('translate-x-0', 'opacity-100');
-      toast.classList.add('translate-x-full', 'opacity-0');
-      setTimeout(() => {
-        const state = this.activeTimers.get(toast);
-        if (state?.rafId) cancelAnimationFrame(state.rafId);
-        this.activeTimers.delete(toast);
-        toast.remove();
-      }, 300);
     };
 
     const scheduleRemoval = (ms) => {
