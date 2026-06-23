@@ -124,7 +124,7 @@ const DB = {
        WHERE (
          (i_e = 2 AND (account = ? OR from_or_to = ?))
          OR (i_e != 2 AND account = ?)
-       ) AND notes LIKE '%--units%'
+       ) AND (notes LIKE '%--units%' OR notes LIKE '%--unit-%')
        ORDER BY date ASC`,
       [accountName, accountName, accountName]
     );
@@ -134,7 +134,7 @@ const DB = {
     let checkpointUnits = 0;
     let checkpointDate = null;
     rows.forEach((row, i) => {
-      const m = (row.notes || '').match(/--units-total\s+([\d.]+)/);
+      const m = (row.notes || '').match(/--units?-total\s+([\d.]+)/);
       if (m) { checkpointIdx = i; checkpointUnits = parseFloat(m[1]); checkpointDate = row.date; }
     });
 
@@ -143,13 +143,13 @@ const DB = {
       // synthetic lot ตัวแทน units ก่อน checkpoint (cost=0 เพราะไม่รู้ต้นทุนเก่า)
       result.push({ date: this._msToDate(checkpointDate), cost: 0, units: checkpointUnits, type: 'buy', _isCheckpoint: true });
       for (const r of rows.slice(checkpointIdx + 1)) {
-        const m = (r.notes || '').match(/--units\s+([-\d.]+)/);
+        const m = (r.notes || '').match(/--units?\s+([-\d.]+)/);
         const units = m ? parseFloat(m[1]) : 0;
         if (units !== 0) result.push({ date: this._msToDate(r.date), cost: r.value || 0, units, type: units >= 0 ? 'buy' : 'sell', from_or_to: r.from_or_to || '', i_e: r.i_e });
       }
     } else {
       for (const r of rows) {
-        const m = (r.notes || '').match(/--units\s+([-\d.]+)/);
+        const m = (r.notes || '').match(/--units?\s+([-\d.]+)/);
         const units = m ? parseFloat(m[1]) : 0;
         result.push({ date: this._msToDate(r.date), cost: r.value || 0, units, type: units >= 0 ? 'buy' : 'sell', from_or_to: r.from_or_to || '', i_e: r.i_e });
       }

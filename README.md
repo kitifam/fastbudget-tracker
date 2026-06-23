@@ -163,3 +163,59 @@ npm run migrate:sqlite -- \
 | `schedules` | รายการซ้ำอัตโนมัติ (Daily/Weekly/Monthly/Yearly) |
 
 ทุก Table ใช้ **Row Level Security (RLS)** — ผู้ใช้เห็นเฉพาะข้อมูลของตัวเอง
+
+---
+
+## การบันทึก Units ในบัญชี Investment
+
+บัญชีประเภท `mutual_fund`, `stock`, `gold`, `investment` รองรับการบันทึกหน่วยลงทุน (units) 3 แบบ ผ่าน **notes ของ transaction** — ระบบอ่านค่าจาก notes อัตโนมัติ ไม่มีฟิลด์ units แยกต่างหาก
+
+### แบบที่ 1: Lot-by-lot (`--units`)
+
+บันทึกทีละรายการซื้อ/ขาย เหมาะสำหรับกองทุนหรือหุ้นที่ตั้งค่าไว้ใน `FUND_ACCOUNTS`
+
+| action | วิธีบันทึก | ตัวอย่าง notes |
+|---|---|---|
+| ซื้อ / รับโอน | `--units <จำนวน>` (ค่าบวก) | `ซื้อรอบมกราคม --units 1234.5678` |
+| ขาย / ไถ่ถอน | `--units -<จำนวน>` (ค่าลบ) | `ไถ่ถอน --units -500.0000` |
+
+- ทุก transaction ที่มี `--units` = 1 lot
+- ระบบคำนวณหน่วยคงเหลือแบบ **FIFO** (First-In-First-Out) ใน `_calcLots()`
+- ต้นทุนคงเหลือ = สัดส่วนจาก lots ที่ยังเปิดอยู่
+- รองรับทั้ง transaction ประเภท income, expense, และ transfer
+
+### แบบที่ 2: Checkpoint (`--units-total`)
+
+บันทึกยอดหน่วยรวม ณ จุดเวลาหนึ่ง เพื่อยกยอดแทนประวัติ lots เก่า
+
+| วิธีบันทึก | ตัวอย่าง notes |
+|---|---|
+| `--units-total <จำนวน>` | `ยกยอด --units-total 5000.0000` |
+| `--unit-total <จำนวน>` (alias) | `BFIXED --unit-total 451841.3865` |
+
+- ระบบจะ **ล้าง lots ก่อน checkpoint ทิ้งทั้งหมด** แล้วสร้าง synthetic lot แทน (cost = 0)
+- lots ที่บันทึกด้วย `--units` หลัง checkpoint จะถูกนับปกติ
+- ต้นทุนรวมจะใช้ `getAccountNetBalance()` (คำนวณจาก transactions ทั้งหมด) แทนการคำนวณจาก lots
+- ใช้เมื่อไม่มีข้อมูลต้นทุนย้อนหลัง หรือต้องการตัดรอบบัญชีใหม่
+
+### แบบที่ 3: Bond Holdings (`--expire`)
+
+บันทึกหุ้นกู้โดยใช้ชื่อหุ้นกู้ใน notes — ไม่มี units จริง ใช้มูลค่าเงินโดยตรง เฉพาะบัญชีประเภท `mutual_fund` / `investment` (ไม่ใช่ `stock` / `gold`) ที่ไม่ได้ตั้งค่าใน `FUND_ACCOUNTS`
+
+| action | วิธีบันทึก | ตัวอย่าง notes |
+|---|---|---|
+| ซื้อ / ถือ | income transaction + ชื่อหุ้นกู้ใน notes | `KBANK283A` |
+| ครบกำหนด / ขาย | แก้ notes ของ transaction ซื้อ เพิ่ม `--expire` | `KBANK283A --expire` |
+
+- ระบบ group ตามชื่อใน notes แสดงสถานะ "ถืออยู่" / "ครบกำหนดแล้ว"
+- notes ที่มีคำว่า `bfixed` หรือ `กองทุนรวม` จะถูกข้ามไม่นับเป็นหุ้นกู้
+- มูลค่ารวม = ผลรวม value ของ income transactions ทุกรายการที่ชื่อตรงกัน
+
+### สรุปเปรียบเทียบ
+
+| แบบ | ใช้กับ | มี units | คำนวณต้นทุน |
+|---|---|---|---|
+| `--units` | กองทุน/หุ้นใน FUND_ACCOUNTS | ใช่ | FIFO จาก lots |
+| `--units-total` | เดียวกัน (ยกยอด) | ใช่ | getAccountNetBalance() |
+| `--expire` | หุ้นกู้ | ไม่มี | ผลรวม income |
+| (ไม่มี tag) | บัญชีทั่วไป | ไม่มี | net balance / account.balance |
