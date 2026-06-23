@@ -16,7 +16,7 @@ const InvestmentsPage = {
 
   async fetchNAV() {
     if (!window.FUND_ACCOUNTS) return;
-    const fundAccounts = window.FUND_ACCOUNTS.filter(f => f.source !== 'yahoo');
+    const fundAccounts = window.FUND_ACCOUNTS.filter(f => f.source !== 'yahoo' && f.source !== 'manual');
     const stockAccounts = window.FUND_ACCOUNTS.filter(f => f.source === 'yahoo');
 
     const [mutualResult, stockResult] = await Promise.allSettled([
@@ -924,7 +924,7 @@ const InvestmentsPage = {
       if (el) el.textContent = msg;
     };
 
-    const fundAccounts = window.FUND_ACCOUNTS.filter(f => f.source !== 'yahoo');
+    const fundAccounts = window.FUND_ACCOUNTS.filter(f => f.source !== 'yahoo' && f.source !== 'manual');
     const stockAccounts = window.FUND_ACCOUNTS.filter(f => f.source === 'yahoo');
 
     const { results, failedEntries } = await this._doFetchPrices(fundAccounts, stockAccounts, setMsg);
@@ -947,7 +947,7 @@ const InvestmentsPage = {
       if (el) el.textContent = msg;
     };
 
-    const fundAccounts = toRetry.filter(f => f.source !== 'yahoo');
+    const fundAccounts = toRetry.filter(f => f.source !== 'yahoo' && f.source !== 'manual');
     const stockAccounts = toRetry.filter(f => f.source === 'yahoo');
 
     const { results: newResults, failedEntries } = await this._doFetchPrices(fundAccounts, stockAccounts, setMsg);

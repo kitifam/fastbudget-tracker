@@ -151,7 +151,7 @@ window.FUND_ACCOUNTS = [
   { name: 'R4 B-USAlphaRMF',  type: 'mutual_fund', source: 'navtable', navKey: 'B-USAlpha-RMF' , color: '#1E4598'},
   // กองทุนพันธบัตร/ตลาดเงิน
   { name: 'FND BFIXED',       type: 'mutual_fund', source: 'navtable', navKey: 'BFIXED',         color: '#1E4598' },
-  { name: 'FND PVDWORLD',     type: 'mutual_fund', source: 'navtable', navKey: 'BFIXED',         color: '#4E2E7F' },
+  { name: 'FND PVDWORLD',     type: 'mutual_fund', source: 'manual',   navKey: 'PVDWORLD',       color: '#4E2E7F' },
   // หุ้น
   { name: 'ST SKY',           type: 'stock',       source: 'yahoo',    ticker: 'SKY.BK',         color: '#55a630' },
   { name: 'ST BRKB80',        type: 'stock',       source: 'yahoo',    ticker: 'BRKB80.BK',      color: '#55a630' },
